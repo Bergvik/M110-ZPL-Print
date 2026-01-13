@@ -235,17 +235,27 @@ export async function write(data, chunkSize = 100, delayMs = 20) {
         throw new Error('Not connected to printer');
     }
 
+    const totalChunks = Math.ceil(data.length / chunkSize);
+    if (totalChunks > 1) {
+        console.log(`[BLE >>>] Writing ${data.length} bytes in ${totalChunks} chunks (${chunkSize} bytes/chunk)`);
+    }
+
     // Send in chunks to respect BLE MTU
     for (let i = 0; i < data.length; i += chunkSize) {
         const chunk = data.slice(i, Math.min(i + chunkSize, data.length));
         
         try {
             await writeCharacteristic.writeValueWithoutResponse(chunk);
+            if (totalChunks > 1 && (i === 0 || i + chunkSize >= data.length)) {
+                console.log(`[BLE >>>] Chunk ${Math.floor(i/chunkSize) + 1}/${totalChunks}: ${chunk.length} bytes`);
+            }
         } catch (error) {
+            console.warn(`[BLE >>>] writeValueWithoutResponse failed, trying with response:`, error.message);
             // Try with response if without response fails
             try {
                 await writeCharacteristic.writeValue(chunk);
             } catch (e2) {
+                console.error(`[BLE >>>] Write failed at byte ${i}:`, e2);
                 throw new Error(`Write failed at byte ${i}: ${e2.message}`);
             }
         }
@@ -254,6 +264,10 @@ export async function write(data, chunkSize = 100, delayMs = 20) {
         if (i + chunkSize < data.length && delayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, delayMs));
         }
+    }
+    
+    if (totalChunks > 1) {
+        console.log(`[BLE >>>] ✓ All ${totalChunks} chunks sent`);
     }
 }
 

@@ -6,6 +6,7 @@
 
 import * as bluetooth from './bluetooth.js';
 import * as printer from './printer.js';
+import { printTest } from './printer.js';
 import { zplRenderer } from './zpl-renderer.js';
 import {
     mmToPixels,
@@ -332,17 +333,22 @@ function updatePrintButton() {
 }
 
 async function handlePrint() {
+    console.log('[APP] Print button clicked');
+    
     if (!state.currentBitmap) {
+        console.warn('[APP] No bitmap to print');
         showToast('Nothing to print. Enter ZPL code first.', 'error');
         return;
     }
     
     if (!bluetooth.getConnectionStatus()) {
+        console.warn('[APP] Printer not connected');
         showToast('Printer not connected.', 'error');
         return;
     }
     
     const copies = Math.max(1, parseInt(elements.copiesInput.value) || 1);
+    console.log(`[APP] Starting print: ${copies} copy/copies, size: ${state.currentBitmap.width}x${state.currentBitmap.height}px`);
     
     state.isPrinting = true;
     updatePrintButton();
@@ -381,9 +387,14 @@ async function handlePrint() {
         }
         
     } catch (error) {
-        console.error('Print error:', error);
-        updatePrintStatus('Print failed', 'error');
-        showToast(error.message, 'error');
+        console.error('[APP] Print error:', error);
+        console.error('[APP] Error details:', {
+            message: error.message,
+            stack: error.stack,
+            bitmapSize: state.currentBitmap ? `${state.currentBitmap.width}x${state.currentBitmap.height}` : 'none'
+        });
+        updatePrintStatus(`Print failed: ${error.message}`, 'error');
+        showToast(`Print failed: ${error.message}`, 'error');
     } finally {
         state.isPrinting = false;
         updatePrintButton();
@@ -435,7 +446,40 @@ function hideToast() {
 }
 
 // ===========================================
+// Debug Functions (exposed to console)
+// ===========================================
+
+// Expose debug functions to window for console access
+window.debugPrinter = {
+    printTest: async (skipFeed = false) => {
+        try {
+            console.log('[DEBUG] Running test print...');
+            await printTest(skipFeed);
+            console.log('[DEBUG] Test print completed');
+        } catch (error) {
+            console.error('[DEBUG] Test print failed:', error);
+            throw error;
+        }
+    },
+    feedPaper: async (mm = 4) => {
+        try {
+            console.log(`[DEBUG] Feeding paper ${mm}mm...`);
+            await printer.feedPaper(mm);
+            console.log('[DEBUG] Feed completed');
+        } catch (error) {
+            console.error('[DEBUG] Feed failed:', error);
+            throw error;
+        }
+    }
+};
+
+// ===========================================
 // Start Application
 // ===========================================
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+    console.log('[DEBUG] Debug functions available:');
+    console.log('[DEBUG]   - window.debugPrinter.printTest(skipFeed)');
+    console.log('[DEBUG]   - window.debugPrinter.feedPaper(mm)');
+});

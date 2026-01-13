@@ -81,11 +81,21 @@ function buildRasterHeader(width, height) {
 /**
  * Build paper feed command (by dots for precision)
  * @param {number} dots - Number of dots to feed (8 dots ≈ 1mm at 203 DPI)
+ * @param {boolean} useLineFeed - If true, use ESC d (line feed) instead of ESC J (dot feed)
  * @returns {Uint8Array}
  */
-function buildFeedCommand(dots = 32) {
-    // ESC J n - Feed n dots (more precise than ESC d which feeds lines)
-    return new Uint8Array([...CMD.FEED_DOTS, Math.min(dots, 255)]);
+function buildFeedCommand(dots = 32, useLineFeed = false) {
+    if (useLineFeed) {
+        // ESC d n - Feed n lines (less precise, but more compatible)
+        // Convert dots to approximate lines (assuming 24 dots per line)
+        const lines = Math.max(1, Math.round(dots / 24));
+        console.log(`[FEED] Using line feed: ${lines} lines (${dots} dots requested)`);
+        return new Uint8Array([...CMD.FEED_LINES, Math.min(lines, 255)]);
+    } else {
+        // ESC J n - Feed n dots (more precise)
+        console.log(`[FEED] Using dot feed: ${dots} dots`);
+        return new Uint8Array([...CMD.FEED_DOTS, Math.min(dots, 255)]);
+    }
 }
 
 /**
@@ -118,6 +128,19 @@ function convertBitmapForPrinter(bitmap, width, height) {
 }
 
 /**
+ * Convert bytes to hex string for debugging
+ * @param {Uint8Array} bytes 
+ * @param {number} maxBytes 
+ * @returns {string}
+ */
+function bytesToHex(bytes, maxBytes = 32) {
+    const len = Math.min(bytes.length, maxBytes);
+    return Array.from(bytes.slice(0, len))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ') + (bytes.length > maxBytes ? '...' : '');
+}
+
+/**
  * Print a 1-bit monochrome bitmap
  * @param {Uint8Array} bitmap - 1-bit packed bitmap
  * @param {number} width - Image width in pixels
@@ -126,6 +149,10 @@ function convertBitmapForPrinter(bitmap, width, height) {
  * @returns {Promise<void>}
  */
 export async function printBitmap(bitmap, width, height, onProgress) {
+    console.log('[PRINT] Starting print job');
+    console.log(`[PRINT] Dimensions: ${width}x${height}px (${Math.ceil(width/8)} bytes/row)`);
+    console.log(`[PRINT] Bitmap size: ${bitmap.length} bytes`);
+    
     if (!bluetooth.getConnectionStatus()) {
         throw new Error('Printer not connected');
     }
@@ -136,22 +163,37 @@ export async function printBitmap(bitmap, width, height, onProgress) {
     
     const rowBytes = Math.ceil(width / 8);
     const printerData = convertBitmapForPrinter(bitmap, width, height);
+    console.log(`[PRINT] Converted to printer format: ${printerData.length} bytes`);
     
     try {
         // Initialize printer
-        if (onProgress) onProgress(0);
-        await bluetooth.write(buildInitCommand());
+        console.log('[PRINT] Step 1/4: Initializing printer...');
+        if (onProgress) onProgress(0.05);
+        
+        const initCmd = buildInitCommand();
+        console.log(`[PRINT] Init command: ${bytesToHex(initCmd)}`);
+        await bluetooth.write(initCmd);
         await sleep(50);
+        console.log('[PRINT] ✓ Printer initialized');
         
         // Send raster header
+        console.log('[PRINT] Step 2/4: Sending raster header...');
+        if (onProgress) onProgress(0.1);
+        
         const header = buildRasterHeader(width, height);
+        console.log(`[PRINT] Raster header: ${bytesToHex(header)}`);
+        console.log(`[PRINT] Header details: widthBytes=${Math.ceil(width/8)}, height=${height}`);
         await bluetooth.write(header);
         await sleep(20);
+        console.log('[PRINT] ✓ Raster header sent');
         
         // Send image data in rows
+        console.log('[PRINT] Step 3/4: Sending image data...');
         const ROWS_PER_CHUNK = 8; // Send multiple rows at once for efficiency
         const totalChunks = Math.ceil(height / ROWS_PER_CHUNK);
+        console.log(`[PRINT] Sending ${totalChunks} chunks (${ROWS_PER_CHUNK} rows each)`);
         
+        let totalBytesSent = 0;
         for (let chunk = 0; chunk < totalChunks; chunk++) {
             const startRow = chunk * ROWS_PER_CHUNK;
             const endRow = Math.min(startRow + ROWS_PER_CHUNK, height);
@@ -159,20 +201,53 @@ export async function printBitmap(bitmap, width, height, onProgress) {
             const endByte = endRow * rowBytes;
             
             const chunkData = printerData.slice(startByte, endByte);
+            totalBytesSent += chunkData.length;
+            
             await bluetooth.write(chunkData, 100, CHUNK_DELAY);
             
+            if (chunk === 0 || chunk === totalChunks - 1 || chunk % 10 === 0) {
+                console.log(`[PRINT] Chunk ${chunk + 1}/${totalChunks}: ${chunkData.length} bytes (rows ${startRow}-${endRow-1})`);
+            }
+            
             if (onProgress) {
-                onProgress((chunk + 1) / totalChunks * 0.9);
+                onProgress(0.1 + (chunk + 1) / totalChunks * 0.8);
             }
         }
+        console.log(`[PRINT] ✓ Image data sent: ${totalBytesSent} bytes total`);
         
         // Feed paper after print (small amount to clear print head)
+        console.log('[PRINT] Step 4/4: Feeding paper...');
+        if (onProgress) onProgress(0.95);
+        
         await sleep(100);
-        await bluetooth.write(buildFeedCommand(mmToDots(DEFAULT_FEED_MM)));
+        const feedDots = mmToDots(DEFAULT_FEED_MM);
+        console.log(`[PRINT] Sending feed (${feedDots} dots = ${DEFAULT_FEED_MM}mm)...`);
+        
+        // Try dot feed first, but have option to use line feed if needed
+        const feedCmd = buildFeedCommand(feedDots, false);
+        console.log(`[PRINT] Feed command: ${bytesToHex(feedCmd)}`);
+        
+        try {
+            await bluetooth.write(feedCmd);
+            await sleep(50);
+            console.log('[PRINT] ✓ Feed command sent');
+        } catch (feedError) {
+            console.warn('[PRINT] Dot feed failed, trying line feed:', feedError.message);
+            // Fallback to line feed
+            const lineFeedCmd = buildFeedCommand(feedDots, true);
+            await bluetooth.write(lineFeedCmd);
+            await sleep(50);
+            console.log('[PRINT] ✓ Line feed command sent');
+        }
+        
+        console.log('[PRINT] Print complete!');
         
         if (onProgress) onProgress(1);
+        console.log('[PRINT] ✓ Print job completed successfully');
         
     } catch (error) {
+        console.error('[PRINT] ✗ Print failed:', error);
+        console.error('[PRINT] Error stack:', error.stack);
         throw new Error(`Print failed: ${error.message}`);
     }
 }
@@ -216,12 +291,15 @@ export async function feedPaper(mm = 5) {
 
 /**
  * Send test print (simple pattern)
+ * @param {boolean} skipFeed - If true, skip the feed command (for testing)
  * @returns {Promise<void>}
  */
-export async function printTest() {
+export async function printTest(skipFeed = false) {
     if (!bluetooth.getConnectionStatus()) {
         throw new Error('Printer not connected');
     }
+    
+    console.log('[TEST] Creating test pattern...');
     
     // Create a simple test pattern
     const width = 384;
@@ -248,5 +326,60 @@ export async function printTest() {
         }
     }
     
-    await printBitmap(bitmap, width, height);
+    if (skipFeed) {
+        console.log('[TEST] Printing without feed command...');
+        // Temporarily override DEFAULT_FEED_MM
+        const originalFeed = DEFAULT_FEED_MM;
+        // We'll need to modify printBitmap to accept a skipFeed parameter
+        // For now, just print and manually skip feed
+        await printBitmapWithoutFeed(bitmap, width, height);
+    } else {
+        await printBitmap(bitmap, width, height);
+    }
+}
+
+/**
+ * Print bitmap without feed command (for testing)
+ * @param {Uint8Array} bitmap 
+ * @param {number} width 
+ * @param {number} height 
+ * @returns {Promise<void>}
+ */
+async function printBitmapWithoutFeed(bitmap, width, height) {
+    // Copy of printBitmap but without the feed step
+    if (!bluetooth.getConnectionStatus()) {
+        throw new Error('Printer not connected');
+    }
+    
+    const rowBytes = Math.ceil(width / 8);
+    const printerData = convertBitmapForPrinter(bitmap, width, height);
+    
+    try {
+        const initCmd = buildInitCommand();
+        console.log('[TEST] Init:', bytesToHex(initCmd));
+        await bluetooth.write(initCmd);
+        await sleep(50);
+        
+        const header = buildRasterHeader(width, height);
+        console.log('[TEST] Header:', bytesToHex(header));
+        await bluetooth.write(header);
+        await sleep(20);
+        
+        const ROWS_PER_CHUNK = 8;
+        const totalChunks = Math.ceil(height / ROWS_PER_CHUNK);
+        
+        for (let chunk = 0; chunk < totalChunks; chunk++) {
+            const startRow = chunk * ROWS_PER_CHUNK;
+            const endRow = Math.min(startRow + ROWS_PER_CHUNK, height);
+            const startByte = startRow * rowBytes;
+            const endByte = endRow * rowBytes;
+            const chunkData = printerData.slice(startByte, endByte);
+            await bluetooth.write(chunkData, 100, CHUNK_DELAY);
+        }
+        
+        console.log('[TEST] ✓ Print sent (no feed)');
+        
+    } catch (error) {
+        throw new Error(`Test print failed: ${error.message}`);
+    }
 }
