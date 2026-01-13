@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="description" content="ZPL to Phomemo M110 Label Printer">
+    <title>ZPL Label Printer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1 class="logo">ZPL<span>Print</span></h1>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Disconnected</span>
+            </div>
+        </header>
+
+        <main class="main">
+            <!-- Printer Connection -->
+            <section class="section section--connect">
+                <button class="btn btn--primary btn--large" id="connectBtn">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8.111 16.404a5.5 5.5 0 0 1 7.778 0M12 20h.01M15.536 12.879a8.5 8.5 0 0 0-7.072 0M2.05 9.054a12 12 0 0 1 19.9 0"/>
+                    </svg>
+                    <span id="connectBtnText">Connect Printer</span>
+                </button>
+            </section>
+
+            <!-- Label Size -->
+            <section class="section">
+                <h2 class="section-title">Label Size</h2>
+                <div class="label-size-controls">
+                    <div class="preset-select">
+                        <label for="presetSelect" class="visually-hidden">Preset</label>
+                        <select id="presetSelect" class="select">
+                            <option value="custom">Custom Size</option>
+                            <option value="40x30" selected>40 × 30 mm</option>
+                            <option value="30x15">30 × 15 mm</option>
+                            <option value="50x30">50 × 30 mm</option>
+                            <option value="40x20">40 × 20 mm</option>
+                        </select>
+                    </div>
+                    <div class="custom-size" id="customSizeInputs">
+                        <div class="input-group">
+                            <label for="widthInput">W</label>
+                            <input type="number" id="widthInput" class="input input--small" value="40" min="20" max="48" step="1">
+                            <span class="input-suffix">mm</span>
+                        </div>
+                        <span class="size-separator">×</span>
+                        <div class="input-group">
+                            <label for="heightInput">H</label>
+                            <input type="number" id="heightInput" class="input input--small" value="30" min="5" max="200" step="1">
+                            <span class="input-suffix">mm</span>
+                        </div>
+                    </div>
+                    <div class="size-info" id="sizeInfo">
+                        <span class="size-pixels">320 × 240 px</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ZPL Input -->
+            <section class="section">
+                <h2 class="section-title">ZPL Code</h2>
+                <div class="zpl-input-container">
+                    <textarea 
+                        id="zplInput" 
+                        class="textarea" 
+                        placeholder="Paste your ZPL code here...&#10;&#10;Example:&#10;^XA&#10;^FO50,50^A0N,30,30^FDHello World^FS&#10;^XZ"
+                        spellcheck="false"
+                    ></textarea>
+                    <div class="textarea-actions">
+                        <button class="btn btn--ghost btn--small" id="clearZplBtn" title="Clear">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                        <button class="btn btn--ghost btn--small" id="pasteZplBtn" title="Paste">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Preview -->
+            <section class="section">
+                <h2 class="section-title">Preview</h2>
+                <div class="preview-container" id="previewContainer">
+                    <div class="preview-placeholder" id="previewPlaceholder">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                        <span>Enter ZPL to see preview</span>
+                    </div>
+                    <canvas id="previewCanvas" class="preview-canvas"></canvas>
+                </div>
+                <div class="preview-error" id="previewError"></div>
+            </section>
+
+            <!-- Print Controls -->
+            <section class="section section--print">
+                <div class="print-options">
+                    <div class="input-group">
+                        <label for="copiesInput">Copies</label>
+                        <input type="number" id="copiesInput" class="input input--small" value="1" min="1" max="99">
+                    </div>
+                </div>
+                <button class="btn btn--accent btn--large" id="printBtn" disabled>
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 6 2 18 2 18 9"/>
+                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                        <rect x="6" y="14" width="12" height="8"/>
+                    </svg>
+                    <span>Print Label</span>
+                </button>
+                <div class="print-status" id="printStatus"></div>
+            </section>
+        </main>
+
+        <!-- Error Toast -->
+        <div class="toast" id="toast">
+            <div class="toast-content">
+                <svg class="toast-icon toast-icon--error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <svg class="toast-icon toast-icon--success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <span class="toast-message" id="toastMessage"></span>
+            </div>
+            <button class="toast-close" id="toastClose">×</button>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
