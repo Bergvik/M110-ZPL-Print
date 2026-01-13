@@ -1,6 +1,19 @@
 # ZPL Label Printer for Phomemo M110
 
-A client-side web application that renders ZPL (Zebra Programming Language) labels and prints them to a Phomemo M110 thermal label printer via Web Bluetooth.
+A simple web app that makes it easy to create and print labels on your Phomemo M110 printer using your Android phone and Chrome. No apps to install, no cloud services—just open the page and print!
+
+## How It Works
+
+This app is designed to make label printing as simple as possible:
+
+1. **Get your ZPL code** - Ask ChatGPT or any LLM to generate ZPL code for your label, or write it yourself
+2. **Open the app in Chrome** - Visit the app on your Android phone using Chrome (Web Bluetooth works best on Android)
+3. **Connect your printer** - Tap "Connect Printer" and select your M110 from the Bluetooth list
+4. **Paste your ZPL** - Paste the ZPL code into the app—you'll see a live preview automatically
+5. **Check the preview** - Make sure the preview looks correct before printing
+6. **Print!** - Tap "Print Label" and your label will be sent to the printer
+
+That's it! The entire process happens in your browser—no installation, no accounts, no cloud.
 
 ## Features
 
